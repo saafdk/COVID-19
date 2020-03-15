@@ -40,60 +40,92 @@ Recovered<- X[[4]]
 
 # Define which data; Confirmed, Death or Recovered
 df<- Confirmed
-
+df2<-Recovered
 
 # Setting the date
 df<- df %>%
-  select('Country/Region','2/25/20':'3/14/20') %>%
-  gather(day,incidents,'2/25/20':'3/14/20')
+  select('Country/Region','2/27/20':'3/14/20') %>%
+  gather(day,incidents,'2/27/20':'3/14/20')
 
-# Preparing
+df2<- df2 %>%
+  select('Country/Region','2/27/20':'3/14/20') %>%
+  gather(day,incidents,'2/27/20':'3/14/20')
+
+
+# Converting character dates to Date vectors
 df$day<- as.Date(df$day,"%m/%d/%Y")
+df2$day<- as.Date(df$day,"%m/%d/%Y")
 
+# Grouping
 df<- df %>%
   group_by(`Country/Region`,day) %>%
   summarise(incidents = sum(incidents))
+
+df2<- df2 %>%
+  group_by(`Country/Region`,day) %>%
+  summarise(recovered = sum(incidents))
 
 ```
 
 
 # Extracting the scandinavian countries
-```{r}
+```{r, message=FALSE}
 # Scandinavian
 sc<- df %>%
   filter(`Country/Region` %in% c("Denmark","Norway","Sweden"))
+
+sc2<- df2 %>%
+  filter(`Country/Region` %in% c("Denmark","Norway","Sweden"))
+
+# Joining confirmed and recovered
+SC<-inner_join(sc,sc2)
+
+# Making data transform
+SC<- SC %>%
+  mutate(sqrt_inc = sqrt(incidents),
+         sqt_rec = sqrt(recovered),
+         log_inc = log(incidents),
+         log_rec = log(recovered))
+SC
 ```
 
 
 # Plotting for the scandinavian countries
 ```{r}
-ggplot(sc, aes(day, incidents, color = `Country/Region`)) +
+ggplot(SC, aes(day, log_inc, color = `Country/Region`)) +
   geom_line() +
-  labs(title="Confirmed cases",
-        x ="", y = "Incidents")
+  labs(title="C-19: Confirmed cases",
+        x ="", y = "log(Incidents)")
 ```
 
 # Creating predictions with arima
 ```{r}
 
 # Defining Countries
-Dk<- filter(df, `Country/Region` == "Denmark")
-No<- filter(df, `Country/Region` == "Norway")
-Se<- filter(df, `Country/Region` == "Sweden")
+Dk<- filter(SC, `Country/Region` == "Denmark")
+No<- filter(SC, `Country/Region` == "Norway")
+Se<- filter(SC, `Country/Region` == "Sweden")
 
 # Extracting the the values
-yDk<- Dk$incidents
-yNo<- No$incidents
-ySe<- Se$incidents
+yDk<- Dk$log_inc
+yNo<- No$log_inc
+ySe<- Se$log_inc
 
 # Using auto arima
 fitDk <- auto.arima(yDk)
 fitNo <- auto.arima(yNo)
 fitSe <- auto.arima(ySe)
 
+# Creating subplots
 par(mfrow=c(1,3))
-plot(forecast(fitDk, 7), main="DK")
-plot(forecast(fitNo, 7), main="NO")
-plot(forecast(fitSe, 7), main="Se")
+
+plot(forecast(fitDk, 7), main="DK with 7 days forecast",xlab="Days after Feb 27th",ylab ="log(incidents)")
+grid(nx = 25, ny = 20, col = "lightgray", lty = "dotted")
+plot(forecast(fitNo, 7), main="NO with 7 days forecast",xlab="Days after Feb 27th",ylab ="log(incidents)")
+grid(nx = 25, ny = 20, col = "lightgray", lty = "dotted")
+plot(forecast(fitSe, 7), main="SE with 7 days forecast",xlab="Days after Feb 27th",ylab ="log(incidents)")
+grid(nx = 25, ny = 20, col = "lightgray", lty = "dotted")
+
+
 ```
 
