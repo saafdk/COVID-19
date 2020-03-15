@@ -1,0 +1,80 @@
+---
+title: "CoronaScandinavia"
+author: "Stanley"
+date: "14/3/2020"
+output: pdf_document
+---
+
+# Loading libraries
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tensorflow)
+library(keras)
+library(modelr)
+library(lubridate)
+library(dlm)
+```
+
+
+## Loading data
+```{r cars}
+my_files<- list.files(path = "csse_covid_19_data/csse_covid_19_time_series", full.names = TRUE)
+
+# Storing to a list
+X<- my_files %>%
+  setNames(nm = .) %>%
+  map(read_csv)
+
+# Renaming for each data set
+Confirmed<- X[[2]]
+Death<- X[[3]]
+Recovered<- X[[4]]
+
+```
+
+## Extracting for the confirmed 
+```{r}
+df<- Confirmed<- X[[2]]
+
+df<- df %>%
+  select('Country/Region','2/25/20':'3/13/20') %>%
+  gather(day,incidents,'2/25/20':'3/13/20')
+
+df$day<- as.Date(df$day,"%m/%d/%Y")
+
+df<- df %>%
+  group_by(`Country/Region`,day) %>%
+  summarise(incidents = sum(incidents))
+
+```
+
+# Extracting the scandinavian countries
+```{r}
+Dk<- filter(df, `Country/Region` == "Denmark")
+No<- filter(df, `Country/Region` == "Norway")
+Se<- filter(df, `Country/Region` == "Sweden")
+
+sc<-data.frame()
+as_tibble(sc)
+
+sc %>%
+  nest(data = c(Dk,No,Se))
+
+yDk<- Dk$incidents
+yNo<- No$incidents
+ySe<- Se$incidents
+
+# Using auto arima
+fitDk <- auto.arima(yDk)
+fitNo <- auto.arima(yNo)
+fitSe <- auto.arima(ySe)
+
+
+par(mfrow=c(3,1))
+plot(forecast(fitDk, 7))
+plot(forecast(fitNo, 7))
+plot(forecast(fitSe, 7))
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

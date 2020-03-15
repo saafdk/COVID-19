@@ -1,0 +1,252 @@
+---
+title: "Covid-19"
+author: "Stanley"
+date: "14/3/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(tensorflow)
+library(keras)
+library(modelr)
+library(lubridate)
+library(dlm)
+```
+
+
+# Reading files
+```{r cars}
+getwd()
+my_files<- list.files(path = "csse_covid_19_data/csse_covid_19_time_series", full.names = TRUE)
+
+my_files
+
+X<- my_files %>%
+  setNames(nm = .) %>%
+  map(read_csv)
+
+X
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+
+Confirmed<- X[[2]]
+Death<- X[[3]]
+Recovered<- X[[4]]
+
+
+```
+
+
+
+```{r}
+
+# Confirmed cases
+dfC<- Confirmed %>%
+  select('Country/Region','2/27/20':'3/13/20') %>%
+  gather(day,incidents,'2/27/20':'3/13/20')
+
+dkC<- dfC %>%
+  filter(`Country/Region` == "Denmark") %>%
+  group_by(`day`) %>%
+  summarise(incidents = sum(incidents))
+
+dkC<-arrange(dkC,incidents)
+dkC$day<- as.Date(dkC$day,"%m/%d/%Y")
+
+
+# Recovered cases
+dfR<- Recovered %>%
+  select('Country/Region','2/27/20':'3/13/20') %>%
+  gather(day,incidents,'2/27/20':'3/13/20')
+
+dkR<- dfR %>%
+  filter(`Country/Region` == "Denmark") %>%
+  group_by(`day`) %>%
+  summarise(incidents = sum(incidents))
+
+dkR<-arrange(dkR,incidents)
+dkR$day<- as.Date(dkR$day,"%m/%d/%Y")
+
+
+dkR
+
+p<- ggplot(dkC,aes(day,incidents))
+
+p + geom_line()
+p + geom_jitter()
+p + geom_bar(stat = "identity")
+p + geom_area()
+p + geom_step()
+
+
+```
+
+# Making predictions
+```{r}
+library(forecast)
+
+y<-dkC$incidents
+
+y2<-diff(y)
+
+ts(y2)
+
+fit <- HoltWinters(y2, gamma=FALSE)
+forecast(fit, 3)
+plot(forecast(fit, 3))
+
+
+fit<-ets(y2)
+plot(forecast(fit, 3))
+
+
+fit <- auto.arima(y2)
+fit
+plot(forecast(fit, 3))
+
+
+```
+
+# Using dfC
+```{r}
+df<- Confirmed<- X[[2]]
+
+df<- df %>%
+  select('Country/Region','1/22/20':'3/13/20') %>%
+  gather(day,incidents,'1/22/20':'3/13/20')
+
+df$day<- as.Date(df$day,"%m/%d/%Y")
+
+df<- df %>%
+  group_by(`Country/Region`,day) %>%
+  summarise(incidents = sum(incidents))
+
+df
+
+by_country<- df %>%
+  group_by(`Country/Region`) %>%
+  nest()
+```
+
+
+
+```{r}
+Dk<- filter(df, `Country/Region` == "Denmark")
+No<- filter(df, `Country/Region` == "Norway")
+Se<- filter(df, `Country/Region` == "Sweden")
+
+yDk<- Dk$incidents
+yNo<- No$incidents
+ySe<- Se$incidents
+
+# Using auto arima
+fitDk <- auto.arima(yDk)
+fitNo <- auto.arima(yNo)
+fitSe <- auto.arima(ySe)
+
+
+par(mfrow=c(3,1))
+plot(forecast(fitDk, 7))
+plot(forecast(fitNo, 7))
+plot(forecast(fitSe, 7))
+
+```
+
+
+
+# Creating models
+```{r}
+# Creating af linear model
+country_model<- function(df) {
+  HoltWinters(df$incidents, gamma=FALSE)
+}
+
+models<- map(by_country$data, country_model)
+models
+by_country<- by_country %>%
+  mutate(model = map(data, country_model),
+         resids = map2(data,model,add_residuals))
+by_country
+
+
+
+```
+
+
+
+# EE
+```{r}
+gapminder
+
+# Selecting only Countries and incidents
+
+
+
+df<- Confirmed %>%
+  as_tibble()
+  select('Country/Region','1/22/20':'3/13/20') %>%
+  mutate_if(Confirmed, is.character, as.factor)
+  
+df
+
+df_long<- df %>%
+  gather(day,incidents,'1/22/20':'3/13/20')
+
+newdf<- df_long %>%
+  select('Country/Region','day',incidents)
+
+x<- newdf %>%
+  mutate(dato = as.factor(day),
+         land = as.factor(`Country/Region`)) %>%
+  select(land,dato,incidents)
+
+str(x)
+
+df<- x %>%
+  group_by(land,dato) %>%
+  summarise(incidents = sum(incidents))
+
+```
+
+
+# Plotting data
+```{r}
+
+dk<- df %>%
+  filter(land == 'Denmark')
+  
+ggplot(dk, aes(dato,incidents)) +
+  geom_point()
+
+dk
+
+```
+
+# Testing on Denmark
+```{r}
+rec<- Recovered %>%
+  select('Country/Region','2/27/20':'3/13/20') %>%
+  gather(day,incidents,'2/27/20':'3/13/20') %>%
+  mutate_if(is.character, as.factor) %>%
+  mutate(dato = as.factor(day),
+         land = as.factor(`Country/Region`)) %>%
+  select(land,dato,incidents) %>%
+  group_by(land,dato) %>%
+  summarise(incidents = sum(incidents))
+  
+
+rec %>%
+  filter(land == "Denmark")
+  
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
