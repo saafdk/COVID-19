@@ -1,12 +1,12 @@
 ---
 title: "CoronaScandinavia"
 author: "Stanley"
-date: "14/3/2020"
+date: "15/3/2020"
 output: pdf_document
 ---
 
 # Loading libraries
-```{r setup, include=FALSE}
+```{r setup, message=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(tensorflow)
@@ -14,11 +14,13 @@ library(keras)
 library(modelr)
 library(lubridate)
 library(dlm)
+library(forecast)
+library(dplyr)
 ```
 
 
 ## Loading data
-```{r cars}
+```{r message=FALSE}
 my_files<- list.files(path = "csse_covid_19_data/csse_covid_19_time_series", full.names = TRUE)
 
 # Storing to a list
@@ -35,12 +37,17 @@ Recovered<- X[[4]]
 
 ## Extracting for the confirmed 
 ```{r}
-df<- Confirmed<- X[[2]]
 
+# Define which data; Confirmed, Death or Recovered
+df<- Confirmed
+
+
+# Setting the date
 df<- df %>%
-  select('Country/Region','2/25/20':'3/13/20') %>%
-  gather(day,incidents,'2/25/20':'3/13/20')
+  select('Country/Region','2/25/20':'3/14/20') %>%
+  gather(day,incidents,'2/25/20':'3/14/20')
 
+# Preparing
 df$day<- as.Date(df$day,"%m/%d/%Y")
 
 df<- df %>%
@@ -49,18 +56,32 @@ df<- df %>%
 
 ```
 
+
 # Extracting the scandinavian countries
 ```{r}
+# Scandinavian
+sc<- df %>%
+  filter(`Country/Region` %in% c("Denmark","Norway","Sweden"))
+```
+
+
+# Plotting for the scandinavian countries
+```{r}
+ggplot(sc, aes(day, incidents, color = `Country/Region`)) +
+  geom_line() +
+  labs(title="Confirmed cases",
+        x ="", y = "Incidents")
+```
+
+# Creating predictions with arima
+```{r}
+
+# Defining Countries
 Dk<- filter(df, `Country/Region` == "Denmark")
 No<- filter(df, `Country/Region` == "Norway")
 Se<- filter(df, `Country/Region` == "Sweden")
 
-sc<-data.frame()
-as_tibble(sc)
-
-sc %>%
-  nest(data = c(Dk,No,Se))
-
+# Extracting the the values
 yDk<- Dk$incidents
 yNo<- No$incidents
 ySe<- Se$incidents
@@ -70,11 +91,9 @@ fitDk <- auto.arima(yDk)
 fitNo <- auto.arima(yNo)
 fitSe <- auto.arima(ySe)
 
-
-par(mfrow=c(3,1))
-plot(forecast(fitDk, 7))
-plot(forecast(fitNo, 7))
-plot(forecast(fitSe, 7))
+par(mfrow=c(1,3))
+plot(forecast(fitDk, 7), main="DK")
+plot(forecast(fitNo, 7), main="NO")
+plot(forecast(fitSe, 7), main="Se")
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
