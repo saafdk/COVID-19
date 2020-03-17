@@ -9,13 +9,13 @@ output: pdf_document
 ```{r setup, message=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
-library(tensorflow)
-library(keras)
+#library(tensorflow)
+#library(keras)
 library(modelr)
-library(lubridate)
-library(dlm)
+#library(lubridate)
+#library(dlm)
 library(forecast)
-library(dplyr)
+#library(dplyr)
 ```
 
 
@@ -44,12 +44,12 @@ df2<-Recovered
 
 # Setting the date
 df<- df %>%
-  select('Country/Region','2/27/20':'3/14/20') %>%
-  gather(day,incidents,'2/27/20':'3/14/20')
+  select('Country/Region','2/27/20':'3/15/20') %>%
+  gather(day,incidents,'2/27/20':'3/15/20')
 
 df2<- df2 %>%
-  select('Country/Region','2/27/20':'3/14/20') %>%
-  gather(day,incidents,'2/27/20':'3/14/20')
+  select('Country/Region','2/27/20':'3/15/20') %>%
+  gather(day,incidents,'2/27/20':'3/15/20')
 
 
 # Converting character dates to Date vectors
@@ -80,12 +80,20 @@ sc2<- df2 %>%
 # Joining confirmed and recovered
 SC<-inner_join(sc,sc2)
 
+# Creating the vector of test
+ntest<- round(rnorm(nrow(SC)/3,600,10))
+
 # Making data transform
 SC<- SC %>%
-  mutate(sqrt_inc = sqrt(incidents),
+  mutate(rate_inc = c(0,diff(incidents)),
+         rate_rec = c(0,diff(recovered)),
+         sqrt_inc = sqrt(incidents),
          sqt_rec = sqrt(recovered),
          log_inc = log(incidents),
-         log_rec = log(recovered))
+         log_rec = log(recovered),
+         tested = cumsum(ntest),
+         log_test = log(tested)
+         )
 SC
 ```
 
@@ -94,9 +102,31 @@ SC
 ```{r}
 ggplot(SC, aes(day, log_inc, color = `Country/Region`)) +
   geom_line() +
+  geom_line(aes(day,log_test,color = `Country/Region`)) +
   labs(title="C-19: Confirmed cases",
         x ="", y = "log(Incidents)")
 ```
+
+# Testing for only denmark
+```{r}
+Dk<- filter(SC, `Country/Region` == "Denmark")
+
+Dk<- Dk %>%
+  mutate(forskel = log_test - log_inc)
+
+
+ggplot(Dk, aes(day, log_inc,color = 'Incidents')) +
+  geom_line() +
+  geom_line(aes(day,log_test,color = 'N_Test')) +
+  geom_line(aes(day,forskel,color = 'Difference')) +
+  scale_color_manual(values = c(Incidents = "red", N_Test ="blue", Difference = "black")) +
+  labs(title="C-19: Confirmed cases - log and cumnulative",
+       x ="", y = "log(Incidents)",
+       color = "N_Test vs. Incidents")
+
+```
+
+
 
 # Creating predictions with arima
 ```{r}
@@ -107,19 +137,29 @@ No<- filter(SC, `Country/Region` == "Norway")
 Se<- filter(SC, `Country/Region` == "Sweden")
 
 # Extracting the the values
-yDk<- Dk$log_inc
-yNo<- No$log_inc
-ySe<- Se$log_inc
+# yDk<- Dk$log_inc
+# yNo<- No$log_inc
+# ySe<- Se$log_inc
+
+yDk<- Dk$incidents
+yNo<- diff(No$incidents)
+ySe<- diff(Se$incidents)
+
+
 
 # Using auto arima
 fitDk <- auto.arima(yDk)
 fitNo <- auto.arima(yNo)
 fitSe <- auto.arima(ySe)
 
+ff<-forecast(fitDk,30)
+ff$mean
+
+
 # Creating subplots
 par(mfrow=c(1,3))
 
-plot(forecast(fitDk, 7), main="DK with 7 days forecast",xlab="Days after Feb 27th",ylab ="log(incidents)")
+plot(forecast(fitDk, 30), main="DK with 7 days forecast",xlab="Days after Feb 27th",ylab ="log(incidents)")
 grid(nx = 25, ny = 20, col = "lightgray", lty = "dotted")
 plot(forecast(fitNo, 7), main="NO with 7 days forecast",xlab="Days after Feb 27th",ylab ="log(incidents)")
 grid(nx = 25, ny = 20, col = "lightgray", lty = "dotted")
