@@ -35,26 +35,37 @@ Recovered<- X[[4]]
 
 ```
 
-## Extracting for the confirmed 
+```{r}
+
+```
+
+
+## Preprocessing: Extracting for the confirmed, recovered and death
 ```{r}
 
 # Define which data; Confirmed, Death or Recovered
 df<- Confirmed
 df2<-Recovered
+df3<-Death
 
 # Setting the date
 df<- df %>%
-  select('Country/Region','2/27/20':'3/15/20') %>%
-  gather(day,incidents,'2/27/20':'3/15/20')
+  select('Country/Region','2/27/20':'3/17/20') %>%
+  gather(day,incidents,'2/27/20':'3/17/20')
 
 df2<- df2 %>%
-  select('Country/Region','2/27/20':'3/15/20') %>%
-  gather(day,incidents,'2/27/20':'3/15/20')
+  select('Country/Region','2/27/20':'3/17/20') %>%
+  gather(day,incidents,'2/27/20':'3/17/20')
+
+df3<- df3 %>%
+  select('Country/Region','2/27/20':'3/17/20') %>%
+  gather(day,incidents,'2/27/20':'3/17/20')
 
 
 # Converting character dates to Date vectors
 df$day<- as.Date(df$day,"%m/%d/%Y")
 df2$day<- as.Date(df$day,"%m/%d/%Y")
+df3$day<- as.Date(df$day,"%m/%d/%Y")
 
 # Grouping
 df<- df %>%
@@ -64,6 +75,10 @@ df<- df %>%
 df2<- df2 %>%
   group_by(`Country/Region`,day) %>%
   summarise(recovered = sum(incidents))
+
+df3<- df3 %>%
+  group_by(`Country/Region`,day) %>%
+  summarise(death = sum(incidents))
 
 ```
 
@@ -77,14 +92,21 @@ sc<- df %>%
 sc2<- df2 %>%
   filter(`Country/Region` %in% c("Denmark","Norway","Sweden"))
 
+sc3<- df3 %>%
+  filter(`Country/Region` %in% c("Denmark","Norway","Sweden"))
+
 # Joining confirmed and recovered
 SC<-inner_join(sc,sc2)
+SC2<-inner_join(SC,sc3)
+
+
 
 # Creating the vector of test
-ntest<- round(rnorm(nrow(SC)/3,600,10))
+ntest<- round(rnorm(nrow(SC2)/3,370,0.1))
+cumsum(ntest)
 
 # Making data transform
-SC<- SC %>%
+SC<- SC2 %>%
   mutate(rate_inc = c(0,diff(incidents)),
          rate_rec = c(0,diff(recovered)),
          sqrt_inc = sqrt(incidents),
@@ -92,9 +114,10 @@ SC<- SC %>%
          log_inc = log(incidents),
          log_rec = log(recovered),
          tested = cumsum(ntest),
-         log_test = log(tested)
-         )
-SC
+         log_test = log(tested),
+         frac_pos = log(incidents/tested*100))
+
+SC         
 ```
 
 
@@ -115,14 +138,21 @@ Dk<- Dk %>%
   mutate(forskel = log_test - log_inc)
 
 
-ggplot(Dk, aes(day, log_inc,color = 'Incidents')) +
+ggplot(Dk, aes(day, log_inc,color = 'Confirmed')) +
   geom_line() +
-  geom_line(aes(day,log_test,color = 'N_Test')) +
-  geom_line(aes(day,forskel,color = 'Difference')) +
-  scale_color_manual(values = c(Incidents = "red", N_Test ="blue", Difference = "black")) +
-  labs(title="C-19: Confirmed cases - log and cumnulative",
-       x ="", y = "log(Incidents)",
-       color = "N_Test vs. Incidents")
+  #geom_line(aes(day,log_test,color = 'N_Test')) +
+  geom_line(aes(day,death,color = 'Death')) +
+  geom_line(aes(day,recovered,color = 'Recovered')) +
+  #geom_line(aes(day,frac_pos,color = 'Fraction')) +
+  scale_color_manual(values = c(Confirmed = "red",
+                                #N_Test ="blue",
+                                Recovered = "green",
+                                Death = "black")) +
+  scale_y_continuous("log(Test and Confirmed)",
+                     sec.axis = sec_axis(~ ., name = "Deaths and Recoverd")) +
+  labs(title="DK COVID-19",
+       x ="", y = "log(Test and Confirmed)",
+       color = "")
 
 ```
 
@@ -133,39 +163,61 @@ ggplot(Dk, aes(day, log_inc,color = 'Incidents')) +
 
 # Defining Countries
 Dk<- filter(SC, `Country/Region` == "Denmark")
-No<- filter(SC, `Country/Region` == "Norway")
-Se<- filter(SC, `Country/Region` == "Sweden")
-
-# Extracting the the values
-# yDk<- Dk$log_inc
-# yNo<- No$log_inc
-# ySe<- Se$log_inc
-
 yDk<- Dk$incidents
-yNo<- diff(No$incidents)
-ySe<- diff(Se$incidents)
+testDk<-Dk$tested
+
+# Checking auto and partial correlation for model selection
+acf(yDk)
+pacf(yDk)
+
+# Using the results
+(yDk) %>%
+  Arima(order=c(3,2,1)) %>%
+  forecast(h=7) %>%
+  autoplot
+
+```
+
+# Using kalman filter
+```{r}
+
+pred_auto<-(yDk) %>%
+  Arima(order=c(3,2,1)) %>%
+  forecast(h=7)
+
+pred_auto$mean
+
+fit3<- arima((yDk),  c(3,2,1))
+
+
+pred_arima<- predict(fit3,21)
+#pred_arima
+
+pred_kalman<- KalmanForecast(7, fit3$model)
+pred_kalman$pred
+
+pred_kalman$pred + fit3$coef[4]
+sqrt(pred_kalman$var * fit3$sigma2)
+
+```
 
 
 
+```{r}
 # Using auto arima
-fitDk <- auto.arima(yDk)
-fitNo <- auto.arima(yNo)
-fitSe <- auto.arima(ySe)
+fitDk <- auto.arima((yDk))
+fitDk2<- arima((yDk[11:length(yDk)]),  c(1,2,1))
 
-ff<-forecast(fitDk,30)
+ff<-forecast(fitDk,7)
+ff2<-forecast(fitDk2,30)
+
 ff$mean
+diff(ff2$mean)
 
+(yDk[11:length(yDk)])
 
 # Creating subplots
-par(mfrow=c(1,3))
-
-plot(forecast(fitDk, 30), main="DK with 7 days forecast",xlab="Days after Feb 27th",ylab ="log(incidents)")
-grid(nx = 25, ny = 20, col = "lightgray", lty = "dotted")
-plot(forecast(fitNo, 7), main="NO with 7 days forecast",xlab="Days after Feb 27th",ylab ="log(incidents)")
-grid(nx = 25, ny = 20, col = "lightgray", lty = "dotted")
-plot(forecast(fitSe, 7), main="SE with 7 days forecast",xlab="Days after Feb 27th",ylab ="log(incidents)")
-grid(nx = 25, ny = 20, col = "lightgray", lty = "dotted")
-
-
+plot(ff, main="DK with 7 days forecast",xlab="Days after Feb 27th",ylab ="Incidents")
+grid(nx = , ny = , col = "lightgray", lty = "dotted")
 ```
 
